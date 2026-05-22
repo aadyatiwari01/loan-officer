@@ -1,10 +1,32 @@
 import SwiftUI
 
+enum ReviewSegment: String, CaseIterable {
+    case overview = "Overview"
+    case documents = "Documents"
+    case actions = "Actions"
+    
+    var icon: String {
+        switch self {
+        case .overview: return "doc.text.magnifyingglass"
+        case .documents: return "folder.fill"
+        case .actions: return "hand.tap.fill"
+        }
+    }
+}
+
+enum ActionType {
+    case approve
+    case reject
+    case escalate
+}
+
 // MARK: - Loan Review View
 struct LoanReviewView: View {
     @EnvironmentObject var viewModel: AppViewModel
 
     // MARK: Local State
+    @State private var selectedSegment: ReviewSegment = .overview
+    @State private var selectedAction: ActionType? = nil
     @State private var officerRemarks: String = ""
     @State private var expandedDocumentIDs: Set<UUID> = []
     @State private var showShareSheet = false
@@ -29,31 +51,35 @@ struct LoanReviewView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 20) {
-                    borrowerProfileSection
-                    
-                    // Validation Checks Checklist Card
-                    validationChecklistSection
-                    
-                    loanDetailsSection
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 20) {
+                borrowerProfileSection
+                
+                segmentSelector
+                
+                switch selectedSegment {
+                case .overview:
+                    VStack(spacing: 20) {
+                        borrowerProfileDetailsSection
+                        validationChecklistSection
+                        loanDetailsSection
+                        collateralSection
+                        timelineSection
+                    }
+                    .transition(.opacity)
+                case .documents:
                     documentKYCSection
-                    collateralSection
+                        .transition(.opacity)
+                case .actions:
                     recommendationSection
-                    
-                    // Timeline Section
-                    timelineSection
+                        .transition(.opacity)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 120) // room for floating action bar
             }
-            .background(Color(.systemGroupedBackground))
-
-            // Floating decision action bar
-            floatingActionBar
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 30)
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("Loan Review")
         .navigationBarTitleDisplayMode(.large)
         
@@ -122,6 +148,60 @@ extension LoanReviewView {
         if score < 680 { return "Fair" }
         if score < 750 { return "Good" }
         return "Excellent"
+    }
+}
+
+// MARK: - Segment Selector View
+extension LoanReviewView {
+    private var segmentSelector: some View {
+        HStack(spacing: 4) {
+            ForEach(ReviewSegment.allCases, id: \.self) { segment in
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        selectedSegment = segment
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: segment.icon)
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(segment.rawValue)
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(selectedSegment == segment ? .white : .secondary)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        Group {
+                            if selectedSegment == segment {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color.blue, Color(red: 0.15, green: 0.4, blue: 0.95)],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .shadow(color: Color.blue.opacity(0.3), radius: 6, x: 0, y: 3)
+                            } else {
+                                Color.clear
+                            }
+                        }
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(.tertiarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(.separator).opacity(0.3), lineWidth: 0.5)
+        )
+        .opacity(animateIn ? 1 : 0)
+        .offset(y: animateIn ? 0 : 20)
     }
 }
 
@@ -226,10 +306,17 @@ extension LoanReviewView {
                     Spacer()
                 }
                 .padding(.top, 4)
+            }
+        }
+        .opacity(animateIn ? 1 : 0)
+        .offset(y: animateIn ? 0 : 20)
+    }
+
+    private var borrowerProfileDetailsSection: some View {
+        PremiumCard {
+            VStack(spacing: 12) {
+                SectionHeader(title: "Borrower Information")
                 
-                Divider()
-                
-                // Detail rows
                 DetailRow(icon: "building.2.fill", title: "Employer", value: application.employer)
                 
                 DetailRow(
@@ -608,7 +695,7 @@ extension LoanReviewView {
 extension LoanReviewView {
     private var recommendationSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Remarks")
+            SectionHeader(title: "Remarks & Actions")
             
             PremiumCard {
                 VStack(spacing: 16) {
@@ -655,46 +742,108 @@ extension LoanReviewView {
                         }
                     }
                     
-                    // Clear/Submit Remarks Button
-                    Button {
-                        if officerRemarks.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            withAnimation {
-                                highlightRemarks = true
-                            }
-                        } else {
-                            // Just a visual feedback saving success
-                            highlightRemarks = false
-                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                        }
-                    } label: {
+                    Divider()
+                        .padding(.vertical, 4)
+                    
+                    // Approve, Reject, Escalate buttons merged in this card
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Perform Action")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        
                         HStack(spacing: 8) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                            Text("Save Remarks")
-                                .font(.system(size: 16, weight: .semibold))
+                            actionButton(
+                                type: .approve,
+                                title: "Approve",
+                                icon: "checkmark.circle.fill",
+                                gradient: [.blue, Color(red: 0.15, green: 0.4, blue: 0.95)]
+                            )
+                            
+                            actionButton(
+                                type: .reject,
+                                title: "Reject",
+                                icon: "xmark.circle.fill",
+                                gradient: [.red, Color(red: 0.85, green: 0.15, blue: 0.15)]
+                            )
+                            
+                            actionButton(
+                                type: .escalate,
+                                title: "Escalate",
+                                icon: "arrow.up.circle.fill",
+                                gradient: [.purple, Color(red: 0.6, green: 0.2, blue: 0.85)]
+                            )
                         }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(
-                                    officerRemarks.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
-                                    LinearGradient(colors: [.gray], startPoint: .leading, endPoint: .trailing) :
-                                    LinearGradient(
-                                        colors: [Color(red: 0.2, green: 0.5, blue: 1.0), Color(red: 0.15, green: 0.35, blue: 0.9)],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .shadow(color: Color.blue.opacity(0.15), radius: 8, x: 0, y: 4)
-                        )
                     }
                 }
             }
         }
         .opacity(animateIn ? 1 : 0)
         .offset(y: animateIn ? 0 : 20)
+    }
+    
+    private func actionButton(type: ActionType, title: String, icon: String, gradient: [Color]) -> some View {
+        let isSelected = selectedAction == type
+        let isAnySelected = selectedAction != nil
+        let opacity = isAnySelected ? (isSelected ? 1.0 : 0.4) : 1.0
+        
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                selectedAction = type
+            }
+            performAction(type)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .bold))
+                Text(title)
+                    .font(.system(size: 13, weight: .bold))
+            }
+            .foregroundColor(.white)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(
+                        LinearGradient(
+                            colors: gradient,
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .shadow(color: gradient.first?.opacity(isSelected ? 0.35 : 0.1) ?? .clear, radius: 6, x: 0, y: 3)
+            )
+            .opacity(opacity)
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private func performAction(_ type: ActionType) {
+        switch type {
+        case .approve:
+            if officerRemarks.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                withAnimation {
+                    highlightRemarks = true
+                }
+            } else if !application.canProceedToApproval {
+                showBlockerAlert = true
+            } else {
+                viewModel.showApproveConfirmation = true
+            }
+            
+        case .reject:
+            if officerRemarks.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                withAnimation {
+                    highlightRemarks = true
+                }
+            } else {
+                viewModel.showRejectConfirmation = true
+            }
+            
+        case .escalate:
+            highlightRemarks = false
+            escalationNotes = officerRemarks
+            viewModel.showEscalateSheet = true
+        }
     }
 }
 
@@ -811,76 +960,7 @@ struct TimelineRow: View {
     }
 }
 
-// MARK: - Floating Action Bar
-extension LoanReviewView {
-    private var floatingActionBar: some View {
-        VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    actionPill(icon: "checkmark.circle.fill", text: "Approve", gradient: [.blue]) {
-                        if officerRemarks.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            withAnimation {
-                                highlightRemarks = true
-                            }
-                        } else if !application.canProceedToApproval {
-                            showBlockerAlert = true
-                        } else {
-                            viewModel.showApproveConfirmation = true
-                        }
-                    }
 
-                    actionPill(icon: "xmark.circle.fill", text: "Reject", gradient: [.red, Color(red: 0.85, green: 0.15, blue: 0.15)]) {
-                        if officerRemarks.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            withAnimation {
-                                highlightRemarks = true
-                            }
-                        } else {
-                            viewModel.showRejectConfirmation = true
-                        }
-                    }
-
-                    actionPill(icon: "arrow.up.circle.fill", text: "Escalate", gradient: [.purple, Color(red: 0.6, green: 0.2, blue: 0.85)]) {
-                        highlightRemarks = false
-                        viewModel.showEscalateSheet = true
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-            }
-            .background(
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .ignoresSafeArea(.container, edges: .bottom)
-            )
-        }
-    }
-
-    private func actionPill(icon: String, text: String, gradient: [Color], action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                Text(text)
-                    .font(.system(size: 13, weight: .semibold))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: gradient,
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .shadow(color: gradient.first?.opacity(0.35) ?? .clear, radius: 6, x: 0, y: 3)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
 
 // MARK: - Escalate Sheet
 extension LoanReviewView {
