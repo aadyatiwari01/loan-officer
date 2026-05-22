@@ -315,6 +315,16 @@ class AppViewModel: ObservableObject {
         }
     }
 
+    func deleteNotification(_ notification: AppNotification) {
+        notifications.removeAll(where: { $0.id == notification.id })
+    }
+
+    func markAllNotificationsRead() {
+        for index in notifications.indices {
+            notifications[index].isRead = true
+        }
+    }
+
     func markBorrowerContacted(_ borrower: OverdueBorrower) {
         if let index = overdueBorrowers.firstIndex(where: { $0.id == borrower.id }) {
             overdueBorrowers[index].lastContactDate = Date()

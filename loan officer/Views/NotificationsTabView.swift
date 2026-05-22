@@ -34,36 +34,100 @@ struct NotificationsTabView: View {
         viewModel.notifications.filter { !$0.isRead }.count
     }
 
-    private var urgentNotifications: [AppNotification] {
-        viewModel.notifications.filter { $0.priority == 1 && !$0.isRead }
-    }
-
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(spacing: 12) {
-                // Unread Summary Card
-                unreadSummaryCard
+        VStack(spacing: 0) {
+            // Priority Filter Chips
+            filterChipsSection
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color(.systemGroupedBackground))
 
-                // Urgent Alerts Card
-                if !urgentNotifications.isEmpty {
-                    urgentAlertsCard
+            if filteredNotifications.isEmpty {
+                Spacer()
+                VStack(spacing: 12) {
+                    Image(systemName: "bell.slash.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(.tertiary)
+                    Text("No Notifications")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("You have no \(selectedFilter.lowercased()) notifications.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.tertiary)
                 }
+                .padding()
+                Spacer()
+            } else {
+                List {
+                    // Unread Summary Card
+                    if unreadCount > 0 {
+                        unreadSummaryCard
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation {
+                                    viewModel.markAllNotificationsRead()
+                                }
+                            }
+                    }
 
-                // Priority Filter Chips
-                filterChipsSection
-
-                // Notification Cards
-                ForEach(Array(filteredNotifications.enumerated()), id: \.element.id) { index, notification in
-                    notificationCard(notification)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        ))
-                        .animation(.spring(response: 0.4, dampingFraction: 0.8).delay(Double(index) * 0.05), value: selectedFilter)
+                    ForEach(filteredNotifications) { notification in
+                        notificationCard(notification)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    withAnimation {
+                                        viewModel.deleteNotification(notification)
+                                    }
+                                } label: {
+                                    Label("Dismiss", systemImage: "trash")
+                                }
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                Button {
+                                    withAnimation {
+                                        if notification.isRead {
+                                            if let index = viewModel.notifications.firstIndex(where: { $0.id == notification.id }) {
+                                                viewModel.notifications[index].isRead = false
+                                            }
+                                        } else {
+                                            viewModel.markNotificationRead(notification)
+                                        }
+                                    }
+                                } label: {
+                                    if notification.isRead {
+                                        Label("Unread", systemImage: "envelope.badge")
+                                    } else {
+                                        Label("Read", systemImage: "envelope.open")
+                                    }
+                                }
+                                .tint(.blue)
+                            }
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(Color(.systemGroupedBackground))
+            }
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("Notifications")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if unreadCount > 0 {
+                    Button("Mark All Read") {
+                        withAnimation {
+                            viewModel.markAllNotificationsRead()
+                        }
+                    }
+                    .font(.system(size: 15, weight: .medium))
                 }
             }
-            .padding(.horizontal)
-            .padding(.bottom, 24)
         }
     }
 
@@ -82,7 +146,7 @@ struct NotificationsTabView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(unreadCount) unread alerts")
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    Text("Tap to mark as read")
+                    Text("Tap to mark all as read")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
@@ -92,39 +156,6 @@ struct NotificationsTabView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.top, 8)
-    }
-
-    // MARK: Urgent Alerts
-    private var urgentAlertsCard: some View {
-        GradientCard(gradient: [Color.red.opacity(0.85), Color(red: 0.75, green: 0.1, blue: 0.1)]) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 16, weight: .bold))
-                    Text("\(urgentNotifications.count) Urgent Alert\(urgentNotifications.count > 1 ? "s" : "")")
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .opacity(0.7)
-                }
-                .foregroundColor(.white)
-
-                ForEach(urgentNotifications) { notif in
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(Color.white.opacity(0.3))
-                            .frame(width: 6, height: 6)
-                        Text(notif.title)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.white.opacity(0.9))
-                            .lineLimit(1)
-                    }
-                }
-            }
-            .padding(16)
-        }
     }
 
     // MARK: Filter Chips
@@ -133,7 +164,7 @@ struct NotificationsTabView: View {
             HStack(spacing: 8) {
                 ForEach(filters, id: \.self) { filter in
                     Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                             selectedFilter = filter
                         }
                     } label: {
@@ -144,12 +175,11 @@ struct NotificationsTabView: View {
                             .padding(.vertical, 8)
                             .background(
                                 Capsule()
-                                    .fill(selectedFilter == filter ? Color.blue : Color(.tertiarySystemGroupedBackground))
+                                    .fill(selectedFilter == filter ? Color.blue : Color(.secondarySystemGroupedBackground))
                             )
                     }
                 }
             }
-            .padding(.vertical, 4)
         }
     }
 
@@ -186,6 +216,7 @@ struct NotificationsTabView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                        .multilineTextAlignment(.leading)
 
                     HStack {
                         Text(AppFormatters.timeAgo(notification.timestamp))
@@ -202,6 +233,7 @@ struct NotificationsTabView: View {
                 }
             }
         }
+        .contentShape(Rectangle())
         .onTapGesture {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 viewModel.markNotificationRead(notification)
@@ -216,27 +248,10 @@ struct NotificationsTabView: View {
                 viewModel.navigationPath.append(AppDestination.loanReview)
             }
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button(role: .destructive) {
-                // Dismiss action
-            } label: {
-                Label("Dismiss", systemImage: "xmark.circle")
-            }
-            .tint(.gray)
-        }
-        .swipeActions(edge: .leading) {
-            Button {
-                viewModel.markNotificationRead(notification)
-            } label: {
-                Label("Mark Read", systemImage: "envelope.open")
-            }
-            .tint(.blue)
-        }
     }
 }
 
 #Preview {
-    
     NavigationStack {
         NotificationsTabView()
             .environmentObject(AppViewModel())
