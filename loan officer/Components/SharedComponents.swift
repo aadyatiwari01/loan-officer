@@ -123,6 +123,8 @@ struct StatusBadge: View {
             }
             Text(text)
                 .font(size.font)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .foregroundColor(color)
         .padding(size.padding)

@@ -150,36 +150,48 @@ struct KPICardView: View {
 
     var body: some View {
 
-        VStack(alignment: .leading) {
-
-            Image(systemName: kpi.icon)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(kpi.color)
-                .frame(width: 34, height: 34)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(kpi.color.opacity(0.12))
-                )
-
-            Text("\(kpi.value)")
-                .font(
-                    .system(
-                        size: 28,
-                        weight: .bold,
-                        design: .rounded
+        VStack(alignment: .leading, spacing: 8) {
+            
+            // Icon Badge
+            ZStack {
+                Circle()
+                    .fill(kpi.color.opacity(0.1))
+                    .frame(width: 36, height: 36)
+                Image(systemName: kpi.icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(kpi.color)
+            }
+            
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(kpi.value)")
+                    .font(
+                        .system(
+                            size: 26,
+                            weight: .bold,
+                            design: .rounded
+                        )
                     )
-                )
-                .foregroundStyle(.primary)
+                    .foregroundStyle(.primary)
 
-            Text(kpi.title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(kpi.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .frame(width: 170, height: 140)
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 105, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(Color.white))
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.secondarySystemGroupedBackground))
+                .shadow(color: .black.opacity(0.03), radius: 6, x: 0, y: 3)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color(.separator).opacity(0.2), lineWidth: 0.5)
+        )
     }
 }
 
@@ -434,18 +446,9 @@ struct ApplicationCardView: View {
                         // MARK: Message Borrower Button
 
                         Button {
-
-                            if let conversation = viewModel.conversations.first(where: {
-                                $0.borrowerName == application.borrowerName
-                            }) {
-
-                                viewModel.selectedConversation = conversation
-
-                                viewModel.navigationPath.append(
-                                    AppDestination.communications
-                                )
-                            }
-
+                            viewModel.selectedApplication = application
+                            viewModel.highlightMessageButton = true
+                            viewModel.navigationPath.append(AppDestination.loanReview)
                         } label: {
 
                             HStack(spacing: 6) {

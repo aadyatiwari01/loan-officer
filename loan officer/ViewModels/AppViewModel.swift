@@ -7,6 +7,7 @@ class AppViewModel: ObservableObject {
     // Navigation state
     @Published var navigationPath = NavigationPath()
     @Published var selectedApplication: LoanApplication?
+    @Published var highlightMessageButton: Bool = false
     @Published var showSideMenu: Bool = false
     @Published var searchText: String = ""
     @Published var selectedBranch: String = "Mumbai Central"

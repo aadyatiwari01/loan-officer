@@ -665,7 +665,7 @@ struct AppNotification: Identifiable {
 
 // MARK: - Chat Message
 
-struct ChatMessage: Identifiable {
+struct ChatMessage: Identifiable, Hashable, Equatable {
     let id = UUID()
 
     var text: String
@@ -679,7 +679,7 @@ struct ChatMessage: Identifiable {
 
 // MARK: - Borrower Conversation
 
-struct BorrowerConversation: Identifiable {
+struct BorrowerConversation: Identifiable, Hashable, Equatable {
     let id = UUID()
 
     var borrowerName: String
@@ -751,6 +751,7 @@ enum AppDestination: Hashable {
     case notifications
     case documents
     case profile
+    case chat(BorrowerConversation)
 }
 
 

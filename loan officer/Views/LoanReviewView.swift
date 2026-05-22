@@ -35,6 +35,7 @@ struct LoanReviewView: View {
     @State private var requestedDocumentName: String = ""
     @State private var requestedDocumentNote: String = ""
     @State private var animateIn = false
+    @State private var pulsingScale: CGFloat = 1.0
     
     // New states for validation and remarks checking
     @State private var showBlockerAlert = false
@@ -131,6 +132,9 @@ struct LoanReviewView: View {
                 animateIn = true
             }
         }
+        .onDisappear {
+            viewModel.highlightMessageButton = false
+        }
     }
 }
 
@@ -148,6 +152,21 @@ extension LoanReviewView {
         if score < 680 { return "Fair" }
         if score < 750 { return "Good" }
         return "Excellent"
+    }
+
+    private func riskColor(for risk: RiskLevel) -> Color {
+        switch risk {
+        case .low: return .green
+        case .medium: return .orange
+        case .high: return .red
+        case .critical: return .red
+        }
+    }
+
+    private func eligibilityColor(for score: Int) -> Color {
+        if score >= 70 { return .green }
+        if score >= 50 { return .orange }
+        return .red
     }
 }
 
@@ -262,54 +281,173 @@ extension LoanReviewView {
 extension LoanReviewView {
     private var borrowerProfileSection: some View {
         PremiumCard {
-            VStack(spacing: 12) {
-                // Header row: avatar + name + status
-                HStack(spacing: 16) {
+            VStack(spacing: 14) {
+                // Row 1: Avatar + Name and Employment Info
+                HStack(spacing: 14) {
                     AvatarView(
                         initials: application.borrowerInitials,
-                        size: 72,
+                        size: 52,
                         colors: avatarGradient(for: application.riskLevel)
                     )
 
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(application.borrowerName)
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundStyle(.primary)
-
-                        HStack(spacing: 8) {
-                            StatusBadge(
-                                text: application.employmentType,
-                                color: .blue,
-                                icon: "briefcase.fill",
-                                size: .medium
-                            )
-                            StatusBadge(
-                                text: application.status.rawValue,
-                                color: application.status.color,
-                                icon: application.status.icon,
-                                size: .medium
-                            )
-                        }
+                            .lineLimit(1)
+                        
+                        Text(application.employmentType)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
                     }
-
+                    
                     Spacer()
                 }
                 
-                // Credit Score Badge Row
-                HStack {
-                    StatusBadge(
-                        text: "Credit Score: \(application.creditScore) (\(creditScoreRating(for: application.creditScore)))",
-                        color: creditScoreColor(for: application.creditScore),
-                        icon: "creditcard.fill",
-                        size: .medium
-                    )
+                // Row 2: Status Badges (Left) & Message Button (Right)
+                HStack(alignment: .center) {
+                    HStack(spacing: 6) {
+                        StatusBadge(
+                            text: application.status.rawValue,
+                            color: application.status.color,
+                            icon: application.status.icon,
+                            size: .small
+                        )
+                        StatusBadge(
+                            text: "\(application.riskLevel.rawValue) Risk",
+                            color: riskColor(for: application.riskLevel),
+                            icon: "shield.fill",
+                            size: .small
+                        )
+                    }
+                    
                     Spacer()
+                    
+                    messageBorrowerButton
                 }
-                .padding(.top, 4)
+                
+                Divider()
+                    .overlay(Color(.separator).opacity(0.3))
+                
+                // Row 3: 3-Column Quick Stats Panel
+                HStack(alignment: .center) {
+                    // Column 1: Credit Score
+                    VStack(spacing: 4) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "creditcard.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(creditScoreColor(for: application.creditScore))
+                            Text("\(application.creditScore)")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
+                        }
+                        
+                        Text(creditScoreRating(for: application.creditScore))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .textCase(.uppercase)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    Divider()
+                        .frame(height: 24)
+                        .overlay(Color(.separator).opacity(0.3))
+                    
+                    // Column 2: Loan Amount
+                    VStack(spacing: 4) {
+                        Text(AppFormatters.formatCurrency(application.loanAmount))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                        
+                        Text("Requested")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .textCase(.uppercase)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    Divider()
+                        .frame(height: 24)
+                        .overlay(Color(.separator).opacity(0.3))
+                    
+                    // Column 3: Match / Eligibility Score
+                    VStack(spacing: 4) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.orange)
+                            Text("\(application.eligibilityScore)%")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                .foregroundColor(eligibilityColor(for: application.eligibilityScore))
+                        }
+                        
+                        Text("Match Score")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .textCase(.uppercase)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
             }
         }
         .opacity(animateIn ? 1 : 0)
         .offset(y: animateIn ? 0 : 20)
+    }
+
+    private var messageBorrowerButton: some View {
+        Button {
+            if let conversation = viewModel.conversations.first(where: {
+                $0.borrowerName == application.borrowerName
+            }) {
+                withAnimation {
+                    viewModel.highlightMessageButton = false
+                }
+                viewModel.navigationPath.append(AppDestination.chat(conversation))
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "message.fill")
+                    .font(.system(size: 13, weight: .bold))
+                Text("Message")
+                    .font(.system(size: 13, weight: .bold))
+            }
+            .foregroundColor(viewModel.highlightMessageButton ? .white : .blue)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                Group {
+                    if viewModel.highlightMessageButton {
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.blue, Color(red: 0.15, green: 0.4, blue: 0.95)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .shadow(color: Color.blue.opacity(0.4), radius: 6, x: 0, y: 3)
+                    } else {
+                        Capsule()
+                            .fill(Color.blue.opacity(0.12))
+                    }
+                }
+            )
+            .scaleEffect(viewModel.highlightMessageButton ? pulsingScale : 1.0)
+            .overlay(
+                Capsule()
+                    .stroke(Color.blue.opacity(viewModel.highlightMessageButton ? 1.0 : 0.2), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .onAppear {
+            if viewModel.highlightMessageButton {
+                withAnimation(Animation.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                    pulsingScale = 1.08
+                }
+            } else {
+                pulsingScale = 1.0
+            }
+        }
     }
 
     private var borrowerProfileDetailsSection: some View {

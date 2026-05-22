@@ -11,93 +11,100 @@ struct ChatView: View {
     @EnvironmentObject var viewModel: AppViewModel
 
     let conversation: BorrowerConversation
+    var isPushed: Bool = false
 
     @State private var messageText = ""
 
     var body: some View {
-
-        NavigationStack {
-
-            VStack(spacing: 0) {
-
-                // MARK: Messages
-
-                ScrollView {
-
-                    LazyVStack(spacing: 12) {
-
-                        ForEach(conversation.messages) { message in
-
-                            HStack {
-
-                                if message.sender == .officer {
-
-                                    Spacer()
-
-                                    messageBubble(
-                                        text: message.text,
-                                        color: .blue,
-                                        textColor: .white,
-                                        alignment: .trailing
-                                    )
-
-                                } else {
-
-                                    messageBubble(
-                                        text: message.text,
-                                        color: Color(.secondarySystemBackground),
-                                        textColor: .primary,
-                                        alignment: .leading
-                                    )
-
-                                    Spacer()
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                        }
-                    }
-                    .padding(.top, 16)
-                }
-
-                Divider()
-
-                // MARK: Bottom Input
-
-                HStack(spacing: 12) {
-
-                    TextField(
-                        "Type a message...",
-                        text: $messageText
-                    )
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Color(.secondarySystemBackground))
-                    )
-
-                    Button {
-
-                        sendMessage()
-
-                    } label: {
-
-                        Image(systemName: "paperplane.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white)
-                            .frame(width: 46, height: 46)
-                            .background(Color.blue)
-                            .clipShape(Circle())
-                    }
-                }
-                .padding()
-                .background(Color(.systemBackground))
+        if isPushed {
+            chatContent
+        } else {
+            NavigationStack {
+                chatContent
             }
-            .navigationTitle(conversation.borrowerName)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
+        }
+    }
 
+    private var chatContent: some View {
+        VStack(spacing: 0) {
+
+            // MARK: Messages
+
+            ScrollView {
+
+                LazyVStack(spacing: 12) {
+
+                    ForEach(conversation.messages) { message in
+
+                        HStack {
+
+                            if message.sender == .officer {
+
+                                Spacer()
+
+                                messageBubble(
+                                    text: message.text,
+                                    color: .blue,
+                                    textColor: .white,
+                                    alignment: .trailing
+                                )
+
+                            } else {
+
+                                messageBubble(
+                                    text: message.text,
+                                    color: Color(.secondarySystemBackground),
+                                    textColor: .primary,
+                                    alignment: .leading
+                                )
+
+                                Spacer()
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+                .padding(.top, 16)
+            }
+
+            Divider()
+
+            // MARK: Bottom Input
+
+            HStack(spacing: 12) {
+
+                TextField(
+                    "Type a message...",
+                    text: $messageText
+                )
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(Color(.secondarySystemBackground))
+                )
+
+                Button {
+
+                    sendMessage()
+
+                } label: {
+
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.white)
+                        .frame(width: 46, height: 46)
+                        .background(Color.blue)
+                        .clipShape(Circle())
+                }
+            }
+            .padding()
+            .background(Color(.systemBackground))
+        }
+        .navigationTitle(conversation.borrowerName)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !isPushed {
                 ToolbarItem(placement: .topBarLeading) {
-
                     Button("Close") {
                         dismiss()
                     }

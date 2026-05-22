@@ -31,6 +31,8 @@ struct ContentView: View {
                         AllApplicationsView()
                     case .profile:
                         ProfileView()
+                    case .chat(let conversation):
+                        ChatView(conversation: conversation, isPushed: true)
                     }
                 }
         }
