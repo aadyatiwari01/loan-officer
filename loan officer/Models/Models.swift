@@ -456,6 +456,25 @@ struct KPIData: Identifiable {
     var chartData: [CGFloat]
 }
 
+// MARK: - Timeline Event
+
+struct TimelineEvent: Identifiable, Hashable {
+    let id = UUID()
+    var title: String
+    var description: String
+    var timestamp: Date
+    var status: LoanStatus
+    var officerName: String
+}
+
+// MARK: - Validation Issue
+
+struct ValidationIssue: Identifiable, Hashable {
+    let id = UUID()
+    var message: String
+    var isBlocker: Bool
+}
+
 // MARK: - Loan Application
 
 struct LoanApplication: Identifiable, Hashable {
@@ -500,11 +519,63 @@ struct LoanApplication: Identifiable, Hashable {
     var address: String
 
     var purpose: String
+    
+    var documents: [LoanDocument]
+    var timeline: [TimelineEvent]
+    
+    // MARK: - Validation Checks
+    var validationIssues: [ValidationIssue] {
+        var issues: [ValidationIssue] = []
+        
+        // 1. Credit Score
+        if creditScore < 600 {
+            issues.append(ValidationIssue(message: "Credit score is critically low (\(creditScore))", isBlocker: true))
+        } else if creditScore < 680 {
+            issues.append(ValidationIssue(message: "Credit score is moderate (\(creditScore)), requires caution", isBlocker: false))
+        }
+        
+        // 2. KYC Status
+        if kycStatus != .verified {
+            issues.append(ValidationIssue(message: "KYC verification is incomplete (Current: \(kycStatus.rawValue))", isBlocker: true))
+        }
+        
+        // 3. Fraud Flag
+        if fraudFlag {
+            issues.append(ValidationIssue(message: "Security Alert: Potential fraud flagged for this borrower", isBlocker: true))
+        }
+        
+        // 4. Monthly Income
+        if monthlyIncome <= 0 && loanType != "Education Loan" {
+            issues.append(ValidationIssue(message: "Reported monthly income is zero or missing", isBlocker: true))
+        }
+        
+        // 5. Document verification
+        for doc in documents {
+            switch doc.status {
+            case .missing:
+                issues.append(ValidationIssue(message: "Missing required document: \(doc.name)", isBlocker: true))
+            case .tampered:
+                issues.append(ValidationIssue(message: "Security Alert: Tampered document detected (\(doc.name))", isBlocker: true))
+            case .duplicate:
+                issues.append(ValidationIssue(message: "Duplicate document detected: \(doc.name)", isBlocker: false))
+            case .pending:
+                issues.append(ValidationIssue(message: "Pending verification: \(doc.name)", isBlocker: true))
+            case .verified:
+                break
+            }
+        }
+        
+        return issues
+    }
+    
+    var canProceedToApproval: Bool {
+        return !validationIssues.contains(where: { $0.isBlocker })
+    }
 }
 
 // MARK: - Loan Document
 
-struct LoanDocument: Identifiable {
+struct LoanDocument: Identifiable, Hashable {
     let id = UUID()
 
     var name: String
@@ -679,6 +750,7 @@ enum AppDestination: Hashable {
     case recoveryManagement
     case notifications
     case documents
+    case profile
 }
 
 
@@ -739,7 +811,21 @@ struct SampleData {
             phoneNumber: "+91 98765 43210",
             email: "priya.sharma@email.com",
             address: "402, Serenity Heights, Andheri West, Mumbai 400053",
-            purpose: "Purchase of 2BHK apartment"
+            purpose: "Purchase of 2BHK apartment",
+            documents: [
+                LoanDocument(name: "Aadhaar Card", type: "Identity", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -3, to: Date()), ocrVerified: true, icon: "person.text.rectangle.fill"),
+                LoanDocument(name: "PAN Card", type: "Identity", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -3, to: Date()), ocrVerified: true, icon: "creditcard.fill"),
+                LoanDocument(name: "Salary Slips (3 months)", type: "Income", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -3, to: Date()), ocrVerified: true, icon: "doc.text.fill"),
+                LoanDocument(name: "Bank Statement", type: "Financial", status: .pending, uploadDate: nil, ocrVerified: false, icon: "building.columns.fill"),
+                LoanDocument(name: "Property Documents", type: "Collateral", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -3, to: Date()), ocrVerified: false, icon: "house.fill"),
+                LoanDocument(name: "Employment Letter", type: "Employment", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -3, to: Date()), ocrVerified: false, icon: "envelope.open.fill")
+            ],
+            timeline: [
+                TimelineEvent(title: "Under Review", description: "Assigned to Senior Loan Officer Rajesh Kumar.", timestamp: Calendar.current.date(byAdding: .hour, value: -2, to: Date())!, status: .underReview, officerName: "System"),
+                TimelineEvent(title: "Document Requested", description: "6 months Primary Bank Statement requested by officer.", timestamp: Calendar.current.date(byAdding: .hour, value: -2, to: Date())! - 300, status: .underReview, officerName: "Rajesh Kumar"),
+                TimelineEvent(title: "KYC Completed", description: "System verified Aadhaar and PAN successfully.", timestamp: Calendar.current.date(byAdding: .hour, value: -3, to: Date())! + 600, status: .pending, officerName: "System"),
+                TimelineEvent(title: "Application Submitted", description: "Loan application submitted online by borrower.", timestamp: Calendar.current.date(byAdding: .hour, value: -3, to: Date())!, status: .pending, officerName: "Priya Sharma")
+            ]
         ),
         LoanApplication(
             borrowerName: "Amit Patel",
@@ -763,7 +849,17 @@ struct SampleData {
             phoneNumber: "+91 87654 32109",
             email: "amit.patel@email.com",
             address: "15, MG Road, Pune 411001",
-            purpose: "Business expansion"
+            purpose: "Business expansion",
+            documents: [
+                LoanDocument(name: "Aadhaar Card", type: "Identity", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -4, to: Date()), ocrVerified: true, icon: "person.text.rectangle.fill"),
+                LoanDocument(name: "PAN Card", type: "Identity", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -4, to: Date()), ocrVerified: true, icon: "creditcard.fill"),
+                LoanDocument(name: "Business Registration", type: "Business", status: .missing, uploadDate: nil, ocrVerified: false, icon: "doc.text.fill"),
+                LoanDocument(name: "Bank Statement", type: "Financial", status: .pending, uploadDate: nil, ocrVerified: false, icon: "building.columns.fill")
+            ],
+            timeline: [
+                TimelineEvent(title: "KYC Incomplete", description: "Verification completed with warnings. Secondary business proof missing.", timestamp: Calendar.current.date(byAdding: .hour, value: -7, to: Date())!, status: .pending, officerName: "System"),
+                TimelineEvent(title: "Application Submitted", description: "Loan application submitted online by borrower.", timestamp: Calendar.current.date(byAdding: .hour, value: -8, to: Date())!, status: .pending, officerName: "Amit Patel")
+            ]
         ),
         LoanApplication(
             borrowerName: "Sneha Reddy",
@@ -787,7 +883,18 @@ struct SampleData {
             phoneNumber: "+91 76543 21098",
             email: "sneha.reddy@email.com",
             address: "8-2-120, Banjara Hills, Hyderabad 500034",
-            purpose: "Purchase of luxury vehicle"
+            purpose: "Purchase of luxury vehicle",
+            documents: [
+                LoanDocument(name: "Aadhaar Card", type: "Identity", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -2, to: Date()), ocrVerified: true, icon: "person.text.rectangle.fill"),
+                LoanDocument(name: "PAN Card", type: "Identity", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -2, to: Date()), ocrVerified: true, icon: "creditcard.fill"),
+                LoanDocument(name: "Address Proof", type: "Address", status: .tampered, uploadDate: Calendar.current.date(byAdding: .day, value: -2, to: Date()), ocrVerified: false, icon: "mappin.circle.fill"),
+                LoanDocument(name: "Income Proof", type: "Income", status: .missing, uploadDate: nil, ocrVerified: false, icon: "doc.text.fill")
+            ],
+            timeline: [
+                TimelineEvent(title: "Escalated", description: "Application escalated due to critical fraud flags and poor credit.", timestamp: Calendar.current.date(byAdding: .hour, value: -22, to: Date())!, status: .escalated, officerName: "Rajesh Kumar"),
+                TimelineEvent(title: "Security Alert Raised", description: "Digital check flagged address proof as potentially tampered/edited.", timestamp: Calendar.current.date(byAdding: .hour, value: -23, to: Date())!, status: .underReview, officerName: "System"),
+                TimelineEvent(title: "Application Submitted", description: "Loan application submitted online by borrower.", timestamp: Calendar.current.date(byAdding: .day, value: -1, to: Date())!, status: .pending, officerName: "Sneha Reddy")
+            ]
         ),
         LoanApplication(
             borrowerName: "Vikram Singh",
@@ -811,7 +918,20 @@ struct SampleData {
             phoneNumber: "+91 65432 10987",
             email: "vikram.singh@email.com",
             address: "C-12, Vasant Vihar, New Delhi 110057",
-            purpose: "Purchase of 3BHK apartment"
+            purpose: "Purchase of 3BHK apartment",
+            documents: [
+                LoanDocument(name: "Aadhaar Card", type: "Identity", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -5, to: Date()), ocrVerified: true, icon: "person.text.rectangle.fill"),
+                LoanDocument(name: "PAN Card", type: "Identity", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -5, to: Date()), ocrVerified: true, icon: "creditcard.fill"),
+                LoanDocument(name: "Bank Statement", type: "Financial", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -5, to: Date()), ocrVerified: true, icon: "building.columns.fill"),
+                LoanDocument(name: "Property Documents", type: "Collateral", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -5, to: Date()), ocrVerified: true, icon: "house.fill"),
+                LoanDocument(name: "Employment Letter", type: "Employment", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -5, to: Date()), ocrVerified: true, icon: "envelope.open.fill")
+            ],
+            timeline: [
+                TimelineEvent(title: "Approved", description: "Final manager approval complete. Sanction letter generated.", timestamp: Calendar.current.date(byAdding: .day, value: -1, to: Date())!, status: .approved, officerName: "System"),
+                TimelineEvent(title: "Recommendation Submitted", description: "Approved & recommended to manager by Rajesh Kumar. Remarks: Strong borrower history, good salary and clear collateral details.", timestamp: Calendar.current.date(byAdding: .day, value: -1, to: Date())! - 3600, status: .underReview, officerName: "Rajesh Kumar"),
+                TimelineEvent(title: "KYC Completed", description: "KYC checks successfully completed and verified.", timestamp: Calendar.current.date(byAdding: .day, value: -2, to: Date())! + 1800, status: .pending, officerName: "System"),
+                TimelineEvent(title: "Application Submitted", description: "Loan application submitted online by borrower.", timestamp: Calendar.current.date(byAdding: .day, value: -2, to: Date())!, status: .pending, officerName: "Vikram Singh")
+            ]
         ),
         LoanApplication(
             borrowerName: "Meera Nair",
@@ -835,7 +955,17 @@ struct SampleData {
             phoneNumber: "+91 54321 09876",
             email: "meera.nair@email.com",
             address: "22, Brigade Road, Bangalore 560001",
-            purpose: "MBA at IIM Ahmedabad"
+            purpose: "MBA at IIM Ahmedabad",
+            documents: [
+                LoanDocument(name: "Aadhaar Card", type: "Identity", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -1, to: Date()), ocrVerified: true, icon: "person.text.rectangle.fill"),
+                LoanDocument(name: "PAN Card", type: "Identity", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -1, to: Date()), ocrVerified: true, icon: "creditcard.fill"),
+                LoanDocument(name: "Admission Letter", type: "Education", status: .verified, uploadDate: Calendar.current.date(byAdding: .day, value: -1, to: Date()), ocrVerified: true, icon: "doc.text.fill"),
+                LoanDocument(name: "Co-borrower PAN", type: "Identity", status: .pending, uploadDate: nil, ocrVerified: false, icon: "creditcard.fill")
+            ],
+            timeline: [
+                TimelineEvent(title: "Assigned", description: "Assigned to Rajesh Kumar for education verification review.", timestamp: Calendar.current.date(byAdding: .hour, value: -2, to: Date())!, status: .pending, officerName: "System"),
+                TimelineEvent(title: "Application Submitted", description: "Loan application submitted online by borrower.", timestamp: Calendar.current.date(byAdding: .hour, value: -5, to: Date())!, status: .pending, officerName: "Meera Nair")
+            ]
         )
     ]
 

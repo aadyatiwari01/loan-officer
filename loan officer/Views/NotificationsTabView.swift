@@ -206,6 +206,15 @@ struct NotificationsTabView: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 viewModel.markNotificationRead(notification)
             }
+            
+            // Look up borrower name from title or message and deep-link
+            if let matchedApp = viewModel.recentApplications.first(where: { app in
+                notification.title.localizedCaseInsensitiveContains(app.borrowerName) ||
+                notification.message.localizedCaseInsensitiveContains(app.borrowerName)
+            }) {
+                viewModel.selectedApplication = matchedApp
+                viewModel.navigationPath.append(AppDestination.loanReview)
+            }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {

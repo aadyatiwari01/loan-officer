@@ -13,10 +13,19 @@ struct LoanReviewView: View {
     @State private var requestedDocumentName: String = ""
     @State private var requestedDocumentNote: String = ""
     @State private var animateIn = false
+    
+    // New states for validation and remarks checking
+    @State private var showBlockerAlert = false
+    @State private var highlightRemarks = false
 
     /// The application under review — uses selectedApplication or falls back to the first recent one.
     private var application: LoanApplication {
         viewModel.selectedApplication ?? viewModel.recentApplications.first ?? SampleData.recentApplications[0]
+    }
+    
+    private var blockerAlertMessage: String {
+        let blockers = application.validationIssues.filter { $0.isBlocker }
+        return blockers.map { "• " + $0.message }.joined(separator: "\n")
     }
 
     var body: some View {
@@ -24,10 +33,17 @@ struct LoanReviewView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 20) {
                     borrowerProfileSection
+                    
+                    // Validation Checks Checklist Card
+                    validationChecklistSection
+                    
                     loanDetailsSection
                     documentKYCSection
                     collateralSection
                     recommendationSection
+                    
+                    // Timeline Section
+                    timelineSection
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
@@ -42,22 +58,27 @@ struct LoanReviewView: View {
         .navigationBarTitleDisplayMode(.large)
         
         .confirmationDialog("Approve Application", isPresented: $viewModel.showApproveConfirmation, titleVisibility: .visible) {
-            
-            Button("Approve Loan", role: .confirm) {}
-            
-        }
-    message:
-        {
+            Button("Approve Loan", role: .confirm) {
+                viewModel.approveApplication(application, remarks: officerRemarks)
+                if !viewModel.navigationPath.isEmpty {
+                    viewModel.navigationPath.removeLast()
+                }
+            }
+        } message: {
             Text("Are you sure you want to approve \(application.borrowerName)'s \(application.loanType) application for \(AppFormatters.formatCurrency(application.loanAmount))?")
         }
         
         .confirmationDialog("Reject Application", isPresented: $viewModel.showRejectConfirmation, titleVisibility: .visible) {
-            Button("Reject Loan", role: .destructive) {}
-        }
-        message:
-        {
+            Button("Reject Loan", role: .destructive) {
+                viewModel.rejectApplication(application, remarks: officerRemarks)
+                if !viewModel.navigationPath.isEmpty {
+                    viewModel.navigationPath.removeLast()
+                }
+            }
+        } message: {
             Text("Are you sure you want to reject \(application.borrowerName)'s application? This action will notify the borrower.")
         }
+        
         .sheet(isPresented: $viewModel.showEscalateSheet) {
             escalateSheetContent
         }
@@ -65,10 +86,19 @@ struct LoanReviewView: View {
             requestDocumentSheetContent
         }
         .alert("Send Back for Revision", isPresented: $showSendBackAlert) {
-            Button("Send Back") {}
+            Button("Send Back") {
+                if !viewModel.navigationPath.isEmpty {
+                    viewModel.navigationPath.removeLast()
+                }
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This application will be sent back to the borrower for additional information.")
+        }
+        .alert("Approval Blocked", isPresented: $showBlockerAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This application has critical blocker issues that must be resolved first:\n\n\(blockerAlertMessage)")
         }
         .onAppear {
             withAnimation() {
@@ -78,11 +108,81 @@ struct LoanReviewView: View {
     }
 }
 
+// MARK: - Helper Methods for Credit Score
+extension LoanReviewView {
+    private func creditScoreColor(for score: Int) -> Color {
+        if score < 600 { return .red }
+        if score < 680 { return .orange }
+        if score < 750 { return .yellow }
+        return .green
+    }
+    
+    private func creditScoreRating(for score: Int) -> String {
+        if score < 600 { return "Poor" }
+        if score < 680 { return "Fair" }
+        if score < 750 { return "Good" }
+        return "Excellent"
+    }
+}
+
+// MARK: - Validation Checklist Section
+extension LoanReviewView {
+    private var validationChecklistSection: some View {
+        Group {
+            if !application.validationIssues.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(
+                        title: "System Validation Checks",
+                        subtitle: "\(application.validationIssues.filter { !$0.isBlocker }.count) Warnings, \(application.validationIssues.filter { $0.isBlocker }.count) Blocker(s)",
+                        icon: "exclamationmark.shield.fill"
+                    )
+                    
+                    PremiumCard(cornerRadius: 16, padding: 16) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(application.validationIssues) { issue in
+                                HStack(alignment: .top, spacing: 10) {
+                                    Image(systemName: issue.isBlocker ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(issue.isBlocker ? .red : .orange)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(issue.message)
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(.primary)
+                                        Text(issue.isBlocker ? "BLOCKER — Action required before approval" : "WARNING — High risk parameter")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                }
+                                
+                                if issue.id != application.validationIssues.last?.id {
+                                    Divider()
+                                }
+                            }
+                        }
+                    }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(application.canProceedToApproval ? Color.orange.opacity(0.3) : Color.red.opacity(0.3), lineWidth: 1.5)
+                    )
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(application.canProceedToApproval ? Color.orange.opacity(0.04) : Color.red.opacity(0.04))
+                    )
+                }
+                .opacity(animateIn ? 1 : 0)
+                .offset(y: animateIn ? 0 : 20)
+            }
+        }
+    }
+}
+
 // MARK: - Borrower Profile Section
 extension LoanReviewView {
     private var borrowerProfileSection: some View {
         PremiumCard {
-            VStack(spacing: 6) {
+            VStack(spacing: 12) {
                 // Header row: avatar + name + status
                 HStack(spacing: 16) {
                     AvatarView(
@@ -114,7 +214,21 @@ extension LoanReviewView {
 
                     Spacer()
                 }
+                
+                // Credit Score Badge Row
+                HStack {
+                    StatusBadge(
+                        text: "Credit Score: \(application.creditScore) (\(creditScoreRating(for: application.creditScore)))",
+                        color: creditScoreColor(for: application.creditScore),
+                        icon: "creditcard.fill",
+                        size: .medium
+                    )
                     Spacer()
+                }
+                .padding(.top, 4)
+                
+                Divider()
+                
                 // Detail rows
                 DetailRow(icon: "building.2.fill", title: "Employer", value: application.employer)
                 
@@ -135,11 +249,11 @@ extension LoanReviewView {
                 Divider()
 
                 // Contact row
-                VStack(alignment : .leading, spacing: 5 )
-                {
+                VStack(alignment: .leading, spacing: 5) {
                     contactButton(icon: "phone.fill", label: application.phoneNumber, color: .green)
                     contactButton(icon: "envelope.fill", label: application.email, color: .blue)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .opacity(animateIn ? 1 : 0)
@@ -219,7 +333,6 @@ extension LoanReviewView {
                     
                     // Repayment summary
                     repaymentSummaryCard
-                    
                 }
             }
         }
@@ -264,7 +377,6 @@ extension LoanReviewView {
         }
         .frame(maxWidth: .infinity)
     }
-    
 }
 
 // MARK: - Document & KYC Section
@@ -273,12 +385,19 @@ extension LoanReviewView {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(
                 title: "Documents & KYC",
-                subtitle: "\(viewModel.documents.filter { $0.status == .verified }.count)/\(viewModel.documents.count) verified"
+                subtitle: "\(application.documents.filter { $0.status == .verified }.count)/\(application.documents.count) verified",
+                actionTitle: "Request New",
+                action: {
+                    requestedDocumentName = ""
+                    requestedDocumentNote = ""
+                    highlightRemarks = false
+                    viewModel.showDocumentRequest = true
+                }
             )
 
             PremiumCard {
                 VStack(spacing: 10) {
-                    ForEach(viewModel.documents) { document in
+                    ForEach(application.documents) { document in
                         documentCard(document)
                     }
                 }
@@ -321,7 +440,6 @@ extension LoanReviewView {
                     }
 
                     Spacer()
-
 
                     StatusBadge(
                         text: document.status.rawValue,
@@ -376,13 +494,33 @@ extension LoanReviewView {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    
+                    // Simulate Borrower Upload button for pending, missing, or tampered documents
+                    if document.status == .pending || document.status == .missing || document.status == .tampered {
+                        Button {
+                            viewModel.simulateBorrowerResubmission(for: application)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.up.doc.fill")
+                                Text("Simulate Borrower Upload")
+                            }
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(Color.green)
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 4)
+                    }
                 }
                 .padding(.leading, 48)
                 .padding(.bottom, 8)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            if document.id != viewModel.documents.last?.id {
+            if document.id != application.documents.last?.id {
                 Divider()
             }
         }
@@ -474,7 +612,6 @@ extension LoanReviewView {
             
             PremiumCard {
                 VStack(spacing: 16) {
-                    
                     // Text editor for remarks
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Officer Remarks")
@@ -494,6 +631,11 @@ extension LoanReviewView {
                                 .frame(minHeight: 100)
                                 .scrollContentBackground(.hidden)
                                 .background(Color.clear)
+                                .onChange(of: officerRemarks) { newValue in
+                                    if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        highlightRemarks = false
+                                    }
+                                }
                         }
                         .padding(8)
                         .background(
@@ -502,18 +644,33 @@ extension LoanReviewView {
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color(.separator).opacity(0.3), lineWidth: 0.5)
+                                .stroke(highlightRemarks ? Color.red : Color(.separator).opacity(0.3), lineWidth: highlightRemarks ? 1.5 : 0.5)
                         )
+                        
+                        if highlightRemarks {
+                            Text("⚠️ Remarks are mandatory for authorization decisions")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.red)
+                                .padding(.leading, 4)
+                        }
                     }
                     
-                    // Submit button
+                    // Clear/Submit Remarks Button
                     Button {
-                        // Submit recommendation action
+                        if officerRemarks.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            withAnimation {
+                                highlightRemarks = true
+                            }
+                        } else {
+                            // Just a visual feedback saving success
+                            highlightRemarks = false
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        }
                     } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: "paperplane.fill")
+                            Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 15, weight: .semibold))
-                            Text("Submit Remarks")
+                            Text("Save Remarks")
                                 .font(.system(size: 16, weight: .semibold))
                         }
                         .foregroundColor(.white)
@@ -522,13 +679,15 @@ extension LoanReviewView {
                         .background(
                             RoundedRectangle(cornerRadius: 14)
                                 .fill(
+                                    officerRemarks.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
+                                    LinearGradient(colors: [.gray], startPoint: .leading, endPoint: .trailing) :
                                     LinearGradient(
                                         colors: [Color(red: 0.2, green: 0.5, blue: 1.0), Color(red: 0.15, green: 0.35, blue: 0.9)],
                                         startPoint: .leading,
                                         endPoint: .trailing
                                     )
                                 )
-                                .shadow(color: Color.blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                                .shadow(color: Color.blue.opacity(0.15), radius: 8, x: 0, y: 4)
                         )
                     }
                 }
@@ -537,32 +696,151 @@ extension LoanReviewView {
         .opacity(animateIn ? 1 : 0)
         .offset(y: animateIn ? 0 : 20)
     }
+}
 
+// MARK: - Timeline Section
+extension LoanReviewView {
+    private var timelineSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(
+                title: "Application Timeline",
+                subtitle: "History of updates & audits",
+                icon: "clock.arrow.2.circlepath"
+            )
+            
+            PremiumCard {
+                if application.timeline.isEmpty {
+                    Text("No timeline events logged yet.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 8)
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(0..<application.timeline.count, id: \.self) { index in
+                            let event = application.timeline[index]
+                            TimelineRow(
+                                event: event,
+                                isFirst: index == 0,
+                                isLast: index == application.timeline.count - 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        .opacity(animateIn ? 1 : 0)
+        .offset(y: animateIn ? 0 : 20)
+    }
+}
+
+// MARK: - Timeline Row View
+struct TimelineRow: View {
+    let event: TimelineEvent
+    let isFirst: Bool
+    let isLast: Bool
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            // Indicator column
+            VStack(spacing: 0) {
+                // Line above dot
+                if !isFirst {
+                    Rectangle()
+                        .fill(Color(.separator))
+                        .frame(width: 2, height: 12)
+                } else {
+                    Spacer().frame(height: 12)
+                }
+                
+                // Dot
+                Circle()
+                    .fill(event.status.color)
+                    .frame(width: 12, height: 12)
+                    .overlay(
+                        Circle()
+                            .stroke(Color(.systemBackground), lineWidth: 2)
+                    )
+                    .shadow(color: event.status.color.opacity(0.4), radius: 4)
+                
+                // Line below dot
+                if !isLast {
+                    Rectangle()
+                        .fill(Color(.separator))
+                        .frame(width: 2)
+                } else {
+                    Spacer()
+                }
+            }
+            .frame(width: 16)
+            
+            // Content column
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .top) {
+                    Text(event.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.primary)
+                    
+                    Spacer()
+                    
+                    Text(AppFormatters.formatDate(event.timestamp))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                
+                Text(event.description)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                HStack(spacing: 4) {
+                    Image(systemName: "person.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                    Text("By: \(event.officerName)")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 2)
+                
+                if !isLast {
+                    Spacer().frame(height: 16)
+                }
+            }
+            .padding(.top, 8)
+        }
+    }
 }
 
 // MARK: - Floating Action Bar
 extension LoanReviewView {
     private var floatingActionBar: some View {
         VStack(spacing: 0) {
-            // Top fade
-//            LinearGradient(
-//                colors: [Color(.systemGroupedBackground).opacity(0), Color(.systemGroupedBackground)],
-//                startPoint: .top,
-//                endPoint: .bottom
-//            )
-//            .frame(height: 20)
-
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    actionPill(icon: "checkmark.circle.fill", text: "Approve", gradient: <#[Color]#>) {
-                        viewModel.showApproveConfirmation = true
+                    actionPill(icon: "checkmark.circle.fill", text: "Approve", gradient: [.blue]) {
+                        if officerRemarks.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            withAnimation {
+                                highlightRemarks = true
+                            }
+                        } else if !application.canProceedToApproval {
+                            showBlockerAlert = true
+                        } else {
+                            viewModel.showApproveConfirmation = true
+                        }
                     }
 
                     actionPill(icon: "xmark.circle.fill", text: "Reject", gradient: [.red, Color(red: 0.85, green: 0.15, blue: 0.15)]) {
-                        viewModel.showRejectConfirmation = true
+                        if officerRemarks.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            withAnimation {
+                                highlightRemarks = true
+                            }
+                        } else {
+                            viewModel.showRejectConfirmation = true
+                        }
                     }
 
                     actionPill(icon: "arrow.up.circle.fill", text: "Escalate", gradient: [.purple, Color(red: 0.6, green: 0.2, blue: 0.85)]) {
+                        highlightRemarks = false
                         viewModel.showEscalateSheet = true
                     }
                 }
@@ -651,8 +929,13 @@ extension LoanReviewView {
                 Spacer()
 
                 Button {
-                    viewModel.escalateApplication(application)
-                    viewModel.showEscalateSheet = false
+                    if !escalationNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        viewModel.escalateApplication(application, remarks: escalationNotes)
+                        viewModel.showEscalateSheet = false
+                        if !viewModel.navigationPath.isEmpty {
+                            viewModel.navigationPath.removeLast()
+                        }
+                    }
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.up.circle.fill")
@@ -666,6 +949,8 @@ extension LoanReviewView {
                     .background(
                         RoundedRectangle(cornerRadius: 14)
                             .fill(
+                                escalationNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
+                                LinearGradient(colors: [.gray], startPoint: .leading, endPoint: .trailing) :
                                 LinearGradient(
                                     colors: [.purple, Color(red: 0.6, green: 0.2, blue: 0.85)],
                                     startPoint: .leading,
@@ -674,6 +959,7 @@ extension LoanReviewView {
                             )
                     )
                 }
+                .disabled(escalationNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(20)
             .navigationTitle("Escalate Application")
@@ -774,7 +1060,10 @@ extension LoanReviewView {
                 Spacer()
 
                 Button {
-                    viewModel.showDocumentRequest = false
+                    if !requestedDocumentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        viewModel.requestDocument(application, docName: requestedDocumentName, note: requestedDocumentNote)
+                        viewModel.showDocumentRequest = false
+                    }
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "doc.badge.plus")
@@ -788,6 +1077,8 @@ extension LoanReviewView {
                     .background(
                         RoundedRectangle(cornerRadius: 14)
                             .fill(
+                                requestedDocumentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
+                                LinearGradient(colors: [.gray], startPoint: .leading, endPoint: .trailing) :
                                 LinearGradient(
                                     colors: [.blue, Color(red: 0.15, green: 0.4, blue: 0.95)],
                                     startPoint: .leading,
@@ -796,6 +1087,7 @@ extension LoanReviewView {
                             )
                     )
                 }
+                .disabled(requestedDocumentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(20)
             .navigationTitle("Request Documents")

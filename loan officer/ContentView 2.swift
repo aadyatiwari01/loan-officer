@@ -29,6 +29,8 @@ struct ContentView: View {
                         RecoveryManagementMainView()
                     case .allapplications:
                         AllApplicationsView()
+                    case .profile:
+                        ProfileView()
                     }
                 }
         }

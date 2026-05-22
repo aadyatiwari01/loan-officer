@@ -47,14 +47,19 @@ struct DashboardHeaderSection: View {
 
         HStack(alignment: .center, spacing: 15) {
             
-            AvatarView(
-                initials: viewModel.officerProfile.avatarInitials,
-                size: 44,
-                colors: [
-                    Color(red: 0.2, green: 0.5, blue: 1.0),
-                    Color(red: 0.4, green: 0.3, blue: 0.9)
-                ]
-            )
+            Button {
+                viewModel.navigationPath.append(AppDestination.profile)
+            } label: {
+                AvatarView(
+                    initials: viewModel.officerProfile.avatarInitials,
+                    size: 44,
+                    colors: [
+                        Color(red: 0.2, green: 0.5, blue: 1.0),
+                        Color(red: 0.4, green: 0.3, blue: 0.9)
+                    ]
+                )
+            }
+            .buttonStyle(.plain)
             
             VStack(alignment: .leading, spacing: 5) {
                 
