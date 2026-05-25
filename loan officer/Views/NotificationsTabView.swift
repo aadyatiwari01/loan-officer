@@ -117,18 +117,18 @@ struct NotificationsTabView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if unreadCount > 0 {
-                    Button("Mark All Read") {
-                        withAnimation {
-                            viewModel.markAllNotificationsRead()
-                        }
-                    }
-                    .font(.system(size: 15, weight: .medium))
-                }
-            }
-        }
+//        .toolbar {
+//            ToolbarItem(placement: .navigationBarTrailing) {
+//                if unreadCount > 0 {
+//                    Button("Mark All Read") {
+//                        withAnimation {
+//                            viewModel.markAllNotificationsRead()
+//                        }
+//                    }
+//                    .font(.system(size: 15, weight: .medium))
+//                }
+//            }
+//        }
     }
 
     // MARK: Unread Summary

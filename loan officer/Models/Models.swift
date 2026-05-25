@@ -154,6 +154,8 @@ enum DocumentStatus: String, Codable {
     case missing = "Missing"
     case tampered = "Tampered"
     case duplicate = "Duplicate"
+    case needsReview = "Needs Review"
+    case rejected = "Rejected"
 
     var color: Color {
         switch self {
@@ -175,6 +177,12 @@ enum DocumentStatus: String, Codable {
 
         case .duplicate:
             return .purple
+
+        case .needsReview:
+            return .orange
+
+        case .rejected:
+            return .red
         }
     }
 
@@ -194,6 +202,12 @@ enum DocumentStatus: String, Codable {
 
         case .duplicate:
             return "doc.on.doc.fill"
+
+        case .needsReview:
+            return "questionmark.circle.fill"
+
+        case .rejected:
+            return "xmark.circle.fill"
         }
     }
 }
@@ -560,6 +574,10 @@ struct LoanApplication: Identifiable, Hashable {
                 issues.append(ValidationIssue(message: "Duplicate document detected: \(doc.name)", isBlocker: false))
             case .pending:
                 issues.append(ValidationIssue(message: "Pending verification: \(doc.name)", isBlocker: true))
+            case .needsReview:
+                issues.append(ValidationIssue(message: "Needs manual review: \(doc.name)", isBlocker: true))
+            case .rejected:
+                issues.append(ValidationIssue(message: "Rejected document: \(doc.name)", isBlocker: true))
             case .verified:
                 break
             }
@@ -584,6 +602,9 @@ struct LoanDocument: Identifiable, Hashable {
     var uploadDate: Date?
     var ocrVerified: Bool
     var icon: String
+    
+    var reviewNotes: String? = nil
+    var rejectionReason: String? = nil
 }
 
 // MARK: - Collateral

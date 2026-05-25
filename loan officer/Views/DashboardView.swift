@@ -83,7 +83,7 @@ struct DashboardHeaderSection: View {
                 
                 ZStack(alignment: .topTrailing) {
                     
-                    Image(systemName: "bell.badge.fill")
+                    Image(systemName: "bell.fill")
                         .font(.system(size: 22, weight: .medium))
                         .foregroundStyle(.primary)
                         .frame(width: 44, height: 44)

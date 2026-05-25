@@ -310,6 +310,120 @@ class AppViewModel: ObservableObject {
         }
     }
 
+    func simulateBorrowerDocumentResubmission(for app: LoanApplication, documentId: UUID) {
+        if let index = recentApplications.firstIndex(where: { $0.id == app.id }) {
+            if let docIdx = recentApplications[index].documents.firstIndex(where: { $0.id == documentId }) {
+                withAnimation {
+                    let doc = recentApplications[index].documents[docIdx]
+                    recentApplications[index].documents[docIdx].status = .verified
+                    recentApplications[index].documents[docIdx].uploadDate = Date()
+                    recentApplications[index].documents[docIdx].ocrVerified = true
+                    recentApplications[index].documents[docIdx].reviewNotes = nil
+                    recentApplications[index].documents[docIdx].rejectionReason = nil
+                    
+                    let timelineEvent = TimelineEvent(
+                        title: "Document Submitted",
+                        description: "\(doc.name) resubmitted by borrower and verified successfully.",
+                        timestamp: Date(),
+                        status: recentApplications[index].status,
+                        officerName: "System"
+                    )
+                    recentApplications[index].timeline.insert(timelineEvent, at: 0)
+                    
+                    // Re-evaluate application's kycStatus
+                    let allVerified = recentApplications[index].documents.allSatisfy { $0.status == .verified }
+                    if allVerified {
+                        recentApplications[index].kycStatus = .verified
+                        recentApplications[index].fraudFlag = false
+                    } else {
+                        recentApplications[index].kycStatus = .partial
+                    }
+                    
+                    // Add chat message
+                    if let chatIndex = conversations.firstIndex(where: { $0.borrowerName.localizedCaseInsensitiveContains(app.borrowerName) }) {
+                        let chatMsg = ChatMessage(
+                            text: "I have uploaded the requested document: \(doc.name).",
+                            sender: .borrower,
+                            timestamp: Date(),
+                            isRead: false
+                        )
+                        conversations[chatIndex].messages.append(chatMsg)
+                        conversations[chatIndex].lastMessage = "Uploaded \(doc.name)."
+                        conversations[chatIndex].lastMessageTime = Date()
+                        conversations[chatIndex].unreadCount += 1
+                    }
+                    
+                    // Add notification
+                    let notification = AppNotification(
+                        title: "Document Uploaded: \(app.borrowerName)",
+                        message: "Borrower submitted the requested document: \(doc.name).",
+                        type: .assignedApplication,
+                        timestamp: Date(),
+                        isRead: false,
+                        priority: 2
+                    )
+                    notifications.insert(notification, at: 0)
+                    
+                    // Sync selected application
+                    if selectedApplication?.id == app.id {
+                        selectedApplication = recentApplications[index]
+                    }
+                }
+            }
+        }
+    }
+
+    func updateDocumentReview(for app: LoanApplication, documentId: UUID, status: DocumentStatus, reviewNotes: String?, rejectionReason: String?) {
+        if let appIdx = recentApplications.firstIndex(where: { $0.id == app.id }) {
+            if let docIdx = recentApplications[appIdx].documents.firstIndex(where: { $0.id == documentId }) {
+                withAnimation {
+                    recentApplications[appIdx].documents[docIdx].status = status
+                    recentApplications[appIdx].documents[docIdx].reviewNotes = reviewNotes
+                    recentApplications[appIdx].documents[docIdx].rejectionReason = rejectionReason
+                    
+                    // If it is verified, make sure uploadDate is set
+                    if status == .verified {
+                        recentApplications[appIdx].documents[docIdx].uploadDate = Date()
+                        recentApplications[appIdx].documents[docIdx].ocrVerified = true
+                    }
+                    
+                    // Add a timeline event
+                    let docName = recentApplications[appIdx].documents[docIdx].name
+                    var desc = "\(docName) marked as \(status.rawValue)."
+                    if let notes = reviewNotes, !notes.isEmpty {
+                        desc += " Notes: \(notes)"
+                    }
+                    if let reason = rejectionReason, !reason.isEmpty {
+                        desc += " Reason: \(reason)"
+                    }
+                    
+                    let timelineEvent = TimelineEvent(
+                        title: "Document Reviewed",
+                        description: desc,
+                        timestamp: Date(),
+                        status: recentApplications[appIdx].status,
+                        officerName: "Rajesh Kumar"
+                    )
+                    recentApplications[appIdx].timeline.insert(timelineEvent, at: 0)
+                    
+                    // Re-evaluate application's kycStatus
+                    let allVerified = recentApplications[appIdx].documents.allSatisfy { $0.status == .verified }
+                    if allVerified {
+                        recentApplications[appIdx].kycStatus = .verified
+                        recentApplications[appIdx].fraudFlag = false
+                    } else if recentApplications[appIdx].documents.contains(where: { $0.status == .needsReview || $0.status == .tampered || $0.status == .missing || $0.status == .rejected }) {
+                        recentApplications[appIdx].kycStatus = .partial
+                    }
+                    
+                    // Sync selected application
+                    if selectedApplication?.id == app.id {
+                        selectedApplication = recentApplications[appIdx]
+                    }
+                }
+            }
+        }
+    }
+
     func markNotificationRead(_ notification: AppNotification) {
         if let index = notifications.firstIndex(where: { $0.id == notification.id }) {
             notifications[index].isRead = true

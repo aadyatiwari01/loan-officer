@@ -40,6 +40,7 @@ struct LoanReviewView: View {
     // New states for validation and remarks checking
     @State private var showBlockerAlert = false
     @State private var highlightRemarks = false
+    @State private var selectedReviewDocument: LoanDocument? = nil
 
     /// The application under review — uses selectedApplication or falls back to the first recent one.
     private var application: LoanApplication {
@@ -111,6 +112,13 @@ struct LoanReviewView: View {
         }
         .sheet(isPresented: $viewModel.showDocumentRequest) {
             requestDocumentSheetContent
+        }
+        .sheet(item: $selectedReviewDocument) { doc in
+            DocumentReviewSheet(
+                viewModel: viewModel,
+                application: application,
+                document: doc
+            )
         }
         .alert("Send Back for Revision", isPresented: $showSendBackAlert) {
             Button("Send Back") {
@@ -633,18 +641,10 @@ extension LoanReviewView {
     }
 
     private func documentCard(_ document: LoanDocument) -> some View {
-        let isExpanded = expandedDocumentIDs.contains(document.id)
-
         return VStack(spacing: 0) {
             // Main row — always visible
             Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    if isExpanded {
-                        expandedDocumentIDs.remove(document.id)
-                    } else {
-                        expandedDocumentIDs.insert(document.id)
-                    }
-                }
+                selectedReviewDocument = document
             } label: {
                 HStack(spacing: 12) {
                     // Icon
@@ -659,9 +659,22 @@ extension LoanReviewView {
                         Text(document.name)
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.primary)
-                        Text(document.type)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                        
+                        if let reason = document.rejectionReason, !reason.isEmpty {
+                            Text("Rejected: \(reason)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.red)
+                                .lineLimit(1)
+                        } else if let notes = document.reviewNotes, !notes.isEmpty {
+                            Text("Notes: \(notes)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.orange)
+                                .lineLimit(1)
+                        } else {
+                            Text(document.type)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     Spacer()
@@ -673,77 +686,13 @@ extension LoanReviewView {
                         size: .small
                     )
 
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
                 .padding(.vertical, 8)
             }
             .buttonStyle(.plain)
-
-            // Expanded details
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    // Alert banners based on status
-                    if document.status == .tampered {
-                        alertBanner(
-                            icon: "exclamationmark.octagon.fill",
-                            message: "⚠️ Tampering detected! This document has been flagged for potential fraud. Immediate review is required.",
-                            color: .red
-                        )
-                    }
-
-                    if document.status == .duplicate {
-                        alertBanner(
-                            icon: "doc.on.doc.fill",
-                            message: "Duplicate document detected. A previous version of this document already exists in the system.",
-                            color: .purple
-                        )
-                    }
-
-                    if document.status == .missing {
-                        alertBanner(
-                            icon: "arrow.up.doc.fill",
-                            message: "Upload Required — This document has not been submitted by the borrower.",
-                            color: .red
-                        )
-                    }
-
-                    if let uploadDate = document.uploadDate {
-                        HStack {
-                            Image(systemName: "calendar")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                            Text("Uploaded: \(AppFormatters.formatDate(uploadDate))")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    
-                    // Simulate Borrower Upload button for pending, missing, or tampered documents
-                    if document.status == .pending || document.status == .missing || document.status == .tampered {
-                        Button {
-                            viewModel.simulateBorrowerResubmission(for: application)
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.up.doc.fill")
-                                Text("Simulate Borrower Upload")
-                            }
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 12)
-                            .background(Color.green)
-                            .cornerRadius(8)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 4)
-                    }
-                }
-                .padding(.leading, 48)
-                .padding(.bottom, 8)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
 
             if document.id != application.documents.last?.id {
                 Divider()
